@@ -1,5 +1,6 @@
-import { app, BrowserWindow, globalShortcut, nativeImage } from 'electron'
-import { Menubar } from 'menubar'
+import { app, globalShortcut, nativeImage, ipcMain } from 'electron'
+import { menubar } from 'menubar'
+import type { Menubar } from 'menubar'
 import { join } from 'path'
 import { sendFile, getHistory, clearHistory, setStatusWindow, onStatus } from './sender'
 import { getSettings, updateSettings } from './settings'
@@ -56,7 +57,7 @@ function setTrayIconState(state: SendStatus): void {
 function createMenubar(): void {
   const preloadPath = join(__dirname, '../preload/index.js')
 
-  mb = new Menubar({
+  mb = menubar({
     icon: createTrayImage('idle'),
     browserWindow: {
       width: 360,
@@ -96,8 +97,6 @@ function createMenubar(): void {
 }
 
 // ─── IPC Handlers ────────────────────────────────────────────────────
-
-import { ipcMain } from 'electron'
 
 function registerIpc(): void {
   ipcMain.handle('fling:sendFile', (_event, opts: { filePath?: string; isScreenshot?: boolean }) => {
