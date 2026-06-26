@@ -4,7 +4,7 @@ import History from './components/History'
 import OnboardingPanel from './components/OnboardingPanel'
 import SettingsPanel from './components/SettingsPanel'
 import { useFlingStatus } from './hooks/useFlingStatus'
-import type { AppTheme, FlingSettings, HistoryItem } from '../../main/types'
+import type { AppTheme, DestinationProfile, FlingSettings, HistoryItem } from '../../main/types'
 
 type View = 'main' | 'settings' | 'onboarding'
 
@@ -29,6 +29,11 @@ export default function App() {
   const refreshSettings = useCallback(async () => {
     const loadedSettings = await window.filefling.getSettings()
     setSettings(loadedSettings)
+  }, [])
+
+  const selectDestination = useCallback(async (profileId: string) => {
+    const updatedSettings = await window.filefling.updateSettings({ activeProfileId: profileId })
+    setSettings(updatedSettings)
   }, [])
 
   useEffect(() => {
@@ -91,6 +96,13 @@ export default function App() {
           />
         ) : view === 'main' ? (
           <div className="flex flex-col gap-3 p-4 animate-fade-in">
+            {settings && (
+              <DestinationSwitcher
+                profiles={settings.profiles}
+                activeProfileId={settings.activeProfileId}
+                onSelect={selectDestination}
+              />
+            )}
             <DropZone status={status} progress={progress} />
             <History items={history} onClear={refreshHistory} />
           </div>
@@ -110,6 +122,35 @@ export default function App() {
         </p>
       </footer>
     </div>
+  )
+}
+
+function DestinationSwitcher({
+  profiles,
+  activeProfileId,
+  onSelect
+}: {
+  profiles: DestinationProfile[]
+  activeProfileId: string
+  onSelect: (profileId: string) => void
+}) {
+  if (profiles.length <= 1) return null
+
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="theme-muted text-[10px] font-medium tracking-wide">Destination</span>
+      <select
+        value={activeProfileId}
+        onChange={(event) => onSelect(event.target.value)}
+        className="theme-input border rounded-lg px-2.5 py-1.5 text-xs font-mono transition-all focus:outline-none"
+      >
+        {profiles.map((profile) => (
+          <option key={profile.id} value={profile.id}>
+            {profile.name} → {profile.host || 'not configured'}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 

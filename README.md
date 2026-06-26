@@ -6,11 +6,12 @@ It is built for the workflow of talking to a CLI AI agent on a remote machine vi
 
 ## Core workflow
 
-1. Configure an SSH destination once.
-2. Press `⌘⇧F` to send the latest screenshot, or drag a file into the menubar dropdown.
-3. FileFling uploads the file over SFTP.
-4. The configured clipboard output is copied to your clipboard.
-5. Paste the path or prompt into your remote shell, tmux session, or CLI agent chat.
+1. Configure one or more SSH destinations.
+2. Pick the active destination when needed.
+3. Press `⌘⇧F` to send the latest screenshot, or drag a file into the menubar dropdown.
+4. FileFling uploads the file over SFTP.
+5. The configured clipboard output is copied to your clipboard.
+6. Paste the path or prompt into your remote shell, tmux session, or CLI agent chat.
 
 Default pasted value:
 
@@ -28,6 +29,7 @@ Default pasted value:
 - **First-run onboarding** — guided setup flow for SSH destination details.
 - **Connection test upload** — onboarding can run a real test upload and cleanup before finishing setup.
 - **SSH config import** — select concrete hosts from `~/.ssh/config` to fill host, user, port, and identity file.
+- **Destination profiles** — keep multiple SSH destinations and switch between them from the main view.
 - **Clipboard output templates** — copy a raw path, Markdown, or a reusable agent prompt after upload.
 - **Auto-copy remote output** — successful sends copy the rendered clipboard template.
 - **Send history** — keeps the last 10 sends; search, copy, retry/send again, reveal local files, or delete individual items.
@@ -74,6 +76,7 @@ Main settings:
 
 | Setting | Purpose |
 | --- | --- |
+| Active Destination | Named SSH destination/profile used for sends. |
 | SSH Config Host | Optional alias imported from `~/.ssh/config`. |
 | Host | SSH host, Tailscale hostname/IP, or server name. |
 | Port | SSH port, usually `22`. |
@@ -89,6 +92,29 @@ The local app store is typically located at:
 ```text
 ~/Library/Application Support/filefling/filefling.json
 ```
+
+## Destination profiles
+
+FileFling supports multiple named destinations. Each destination stores its own:
+
+- Host
+- Port
+- Username
+- Remote path
+- SSH key path
+- SSH config alias
+- Clipboard template
+
+The active destination is used for hotkey sends, drag-and-drop uploads, test uploads, and history retry/send-again actions. When more than one destination exists, the main view shows a destination picker above the drop zone.
+
+Manage destinations from Settings:
+
+- Rename the active destination.
+- Create a new destination copied from the current settings.
+- Delete a destination, as long as at least one remains.
+- Save connection/clipboard edits back into the active destination.
+
+Existing single-destination installs are migrated into a `Default` profile.
 
 ## SSH config support
 

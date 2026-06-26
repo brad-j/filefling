@@ -9,6 +9,18 @@ describe('IPC validation', () => {
       username: 'alice',
       sshConfigHost: 'devbox',
       clipboardTemplate: 'Look: {{remotePath}}',
+      activeProfileId: 'work',
+      profiles: [{
+        id: 'work',
+        name: 'Work Devbox',
+        host: 'work.example.com',
+        port: 22,
+        username: 'alice',
+        remotePath: '~/shared',
+        keyPath: '~/.ssh/id_ed25519',
+        sshConfigHost: 'work',
+        clipboardTemplate: '{{remotePath}}'
+      }],
       theme: 'light',
       onboardingComplete: true,
       ignored: 'value'
@@ -18,6 +30,18 @@ describe('IPC validation', () => {
       username: 'alice',
       sshConfigHost: 'devbox',
       clipboardTemplate: 'Look: {{remotePath}}',
+      activeProfileId: 'work',
+      profiles: [{
+        id: 'work',
+        name: 'Work Devbox',
+        host: 'work.example.com',
+        port: 22,
+        username: 'alice',
+        remotePath: '~/shared',
+        keyPath: '~/.ssh/id_ed25519',
+        sshConfigHost: 'work',
+        clipboardTemplate: '{{remotePath}}'
+      }],
       theme: 'light',
       onboardingComplete: true
     })
@@ -28,6 +52,8 @@ describe('IPC validation', () => {
     expect(() => validateSettingsPatch({ theme: 'neon' })).toThrow(/theme/)
     expect(() => validateSettingsPatch({ onboardingComplete: 'yes' })).toThrow(/boolean/)
     expect(() => validateSettingsPatch({ clipboardTemplate: '' })).toThrow(/empty/)
+    expect(() => validateSettingsPatch({ profiles: [{ id: 'one', name: 'One', port: 70000 }] })).toThrow(/port/)
+    expect(() => validateSettingsPatch({ profiles: [{ id: 'dup', name: 'One' }, { id: 'dup', name: 'Two' }] })).toThrow(/duplicate/)
   })
 
   it('rejects null bytes in string settings', () => {

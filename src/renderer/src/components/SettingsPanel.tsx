@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { APP_THEMES, type AppTheme, type FlingSettings, type HostKeyRecord, type SshConfigHost } from '../../../main/types'
+import { APP_THEMES, type AppTheme, type DestinationProfile, type FlingSettings, type HostKeyRecord, type SshConfigHost } from '../../../main/types'
 
 const THEME_LABELS: Record<AppTheme, string> = {
   terminal: 'Terminal Green',
@@ -42,6 +42,74 @@ export default function SettingsPanel({
   const handleChange = (field: keyof FlingSettings, value: string | number) => {
     if (!draft) return
     setDraft({ ...draft, [field]: value })
+  }
+
+  const applyDestinationProfile = (profileId: string) => {
+    if (!draft) return
+    const profile = draft.profiles.find((item) => item.id === profileId)
+    if (!profile) return
+
+    setDraft({
+      ...draft,
+      activeProfileId: profile.id,
+      host: profile.host,
+      port: profile.port,
+      username: profile.username,
+      remotePath: profile.remotePath,
+      keyPath: profile.keyPath,
+      sshConfigHost: profile.sshConfigHost,
+      clipboardTemplate: profile.clipboardTemplate
+    })
+  }
+
+  const renameActiveDestinationProfile = (name: string) => {
+    if (!draft) return
+    setDraft({
+      ...draft,
+      profiles: draft.profiles.map((profile) =>
+        profile.id === draft.activeProfileId ? { ...profile, name } : profile
+      )
+    })
+  }
+
+  const createDestinationProfile = () => {
+    if (!draft) return
+    const profile: DestinationProfile = {
+      id: `profile-${Date.now()}`,
+      name: 'New Destination',
+      host: draft.host,
+      port: draft.port,
+      username: draft.username,
+      remotePath: draft.remotePath,
+      keyPath: draft.keyPath,
+      sshConfigHost: draft.sshConfigHost,
+      clipboardTemplate: draft.clipboardTemplate
+    }
+
+    setDraft({
+      ...draft,
+      activeProfileId: profile.id,
+      profiles: [...draft.profiles, profile]
+    })
+  }
+
+  const deleteActiveDestinationProfile = () => {
+    if (!draft || draft.profiles.length <= 1) return
+    const remainingProfiles = draft.profiles.filter((profile) => profile.id !== draft.activeProfileId)
+    const nextProfile = remainingProfiles[0]
+
+    setDraft({
+      ...draft,
+      activeProfileId: nextProfile.id,
+      profiles: remainingProfiles,
+      host: nextProfile.host,
+      port: nextProfile.port,
+      username: nextProfile.username,
+      remotePath: nextProfile.remotePath,
+      keyPath: nextProfile.keyPath,
+      sshConfigHost: nextProfile.sshConfigHost,
+      clipboardTemplate: nextProfile.clipboardTemplate
+    })
   }
 
   const applySshConfigHost = (alias: string) => {
@@ -95,6 +163,21 @@ export default function SettingsPanel({
       </h2>
 
       <ThemePicker value={draft.theme} onChange={handleThemeChange} />
+
+      <div className="theme-divider h-px my-1" />
+
+      <h2 className="theme-section-title text-xs font-semibold uppercase tracking-[0.2em]">
+        Destination
+      </h2>
+
+      <DestinationProfileEditor
+        profiles={draft.profiles}
+        activeProfileId={draft.activeProfileId}
+        onSelect={applyDestinationProfile}
+        onRename={renameActiveDestinationProfile}
+        onCreate={createDestinationProfile}
+        onDelete={deleteActiveDestinationProfile}
+      />
 
       <div className="theme-divider h-px my-1" />
 
@@ -183,6 +266,72 @@ export default function SettingsPanel({
       >
         {saved ? '✓ Saved' : 'Save Settings'}
       </button>
+    </div>
+  )
+}
+
+function DestinationProfileEditor({
+  profiles,
+  activeProfileId,
+  onSelect,
+  onRename,
+  onCreate,
+  onDelete
+}: {
+  profiles: DestinationProfile[]
+  activeProfileId: string
+  onSelect: (profileId: string) => void
+  onRename: (name: string) => void
+  onCreate: () => void
+  onDelete: () => void
+}) {
+  const activeProfile = profiles.find((profile) => profile.id === activeProfileId) || profiles[0]
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="flex flex-col gap-1">
+        <span className="theme-muted text-[10px] font-medium tracking-wide">Active Destination</span>
+        <select
+          value={activeProfileId}
+          onChange={(event) => onSelect(event.target.value)}
+          className="theme-input border rounded-lg px-2.5 py-1.5 text-xs font-mono transition-all focus:outline-none"
+        >
+          {profiles.map((profile) => (
+            <option key={profile.id} value={profile.id}>
+              {profile.name} → {profile.host || 'not configured'}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <Field
+        label="Destination Name"
+        value={activeProfile?.name || ''}
+        onChange={onRename}
+        placeholder="Work Devbox"
+      />
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onCreate}
+          className="theme-dropzone border rounded-lg py-2 text-[10px] theme-muted transition-all"
+        >
+          New Destination
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={profiles.length <= 1}
+          className={`theme-dropzone border rounded-lg py-2 text-[10px] transition-all ${profiles.length <= 1 ? 'theme-muted-soft cursor-not-allowed' : 'theme-muted'}`}
+        >
+          Delete Destination
+        </button>
+      </div>
+
+      <p className="theme-muted-soft text-[9px] leading-relaxed">
+        Saving updates the active destination with the connection and clipboard settings below.
+      </p>
     </div>
   )
 }

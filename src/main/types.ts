@@ -2,6 +2,18 @@ export const APP_THEMES = ['terminal', 'graphite', 'light'] as const
 
 export type AppTheme = typeof APP_THEMES[number]
 
+export interface DestinationProfile {
+  id: string
+  name: string
+  host: string
+  port: number
+  username: string
+  remotePath: string
+  keyPath: string
+  sshConfigHost: string
+  clipboardTemplate: string
+}
+
 export interface FlingSettings {
   host: string
   port: number
@@ -11,6 +23,8 @@ export interface FlingSettings {
   sshConfigHost: string
   screenshotDir: string
   clipboardTemplate: string
+  activeProfileId: string
+  profiles: DestinationProfile[]
   autoCleanupDays: number
   theme: AppTheme
   onboardingComplete: boolean

@@ -3,7 +3,7 @@ import { readFileSync, statSync } from 'fs'
 import { homedir, userInfo } from 'os'
 import { join } from 'path'
 import { normalizeStoredHostKey } from './hostKeys'
-import { APP_THEMES, type AppTheme, type FlingSettings, type HistoryItem, type HostKeyRecord } from './types'
+import { APP_THEMES, type AppTheme, type DestinationProfile, type FlingSettings, type HistoryItem, type HostKeyRecord } from './types'
 
 function isFile(path: string): boolean {
   try {
@@ -43,6 +43,8 @@ const store = new Store<{
       sshConfigHost: '',
       screenshotDir: join(homedir(), 'Desktop', 'screenshots'),
       clipboardTemplate: '{{remotePath}}',
+      activeProfileId: 'default',
+      profiles: [],
       autoCleanupDays: 7,
       theme: 'terminal',
       onboardingComplete: false
@@ -54,6 +56,81 @@ const store = new Store<{
 
 function isAppTheme(value: unknown): value is AppTheme {
   return typeof value === 'string' && APP_THEMES.includes(value as AppTheme)
+}
+
+function profileFromSettings(settings: FlingSettings, profile?: Partial<DestinationProfile>): DestinationProfile {
+  return {
+    id: profile?.id || 'default',
+    name: profile?.name || 'Default',
+    host: settings.host || '',
+    port: settings.port || 22,
+    username: settings.username || '',
+    remotePath: settings.remotePath || '~/shared',
+    keyPath: settings.keyPath || '',
+    sshConfigHost: settings.sshConfigHost || '',
+    clipboardTemplate: settings.clipboardTemplate || '{{remotePath}}'
+  }
+}
+
+function applyProfile(settings: FlingSettings, profile: DestinationProfile): FlingSettings {
+  return {
+    ...settings,
+    activeProfileId: profile.id,
+    host: profile.host,
+    port: profile.port,
+    username: profile.username,
+    remotePath: profile.remotePath,
+    keyPath: profile.keyPath,
+    sshConfigHost: profile.sshConfigHost,
+    clipboardTemplate: profile.clipboardTemplate
+  }
+}
+
+function profileMatchesSettings(profile: DestinationProfile, settings: FlingSettings): boolean {
+  return profile.host === settings.host &&
+    profile.port === settings.port &&
+    profile.username === settings.username &&
+    profile.remotePath === settings.remotePath &&
+    profile.keyPath === settings.keyPath &&
+    profile.sshConfigHost === settings.sshConfigHost &&
+    profile.clipboardTemplate === settings.clipboardTemplate
+}
+
+function syncActiveProfile(settings: FlingSettings): FlingSettings {
+  if (settings.profiles.length === 0) {
+    return {
+      ...settings,
+      activeProfileId: 'default',
+      profiles: [profileFromSettings(settings)]
+    }
+  }
+
+  const activeProfileId = settings.activeProfileId || settings.profiles[0].id
+  const activeProfile = settings.profiles.find((profile) => profile.id === activeProfileId)
+
+  if (!activeProfile) {
+    return applyProfile(
+      {
+        ...settings,
+        activeProfileId: settings.profiles[0].id
+      },
+      settings.profiles[0]
+    )
+  }
+
+  if (activeProfileId === settings.activeProfileId && profileMatchesSettings(activeProfile, settings)) {
+    return settings
+  }
+
+  return {
+    ...settings,
+    activeProfileId,
+    profiles: settings.profiles.map((profile) =>
+      profile.id === activeProfileId
+        ? profileFromSettings(settings, profile)
+        : profile
+    )
+  }
 }
 
 function hasRequiredConnectionSettings(settings: FlingSettings): boolean {
@@ -84,11 +161,31 @@ function migrateSettings(settings: FlingSettings): FlingSettings {
     changed = true
   }
 
+  if (!Array.isArray(migrated.profiles) || migrated.profiles.length === 0) {
+    migrated = {
+      ...migrated,
+      activeProfileId: migrated.activeProfileId || 'default',
+      profiles: [profileFromSettings(migrated, { id: migrated.activeProfileId || 'default' })]
+    }
+    changed = true
+  }
+
+  if (typeof migrated.activeProfileId !== 'string' || !migrated.activeProfileId.trim()) {
+    migrated = { ...migrated, activeProfileId: migrated.profiles[0]?.id || 'default' }
+    changed = true
+  }
+
   if (typeof migrated.onboardingComplete !== 'boolean') {
     migrated = {
       ...migrated,
       onboardingComplete: hasRequiredConnectionSettings(migrated)
     }
+    changed = true
+  }
+
+  const synced = syncActiveProfile(migrated)
+  if (synced !== migrated) {
+    migrated = synced
     changed = true
   }
 
@@ -105,7 +202,25 @@ export function getSettings(): FlingSettings {
 
 export function updateSettings(patch: Partial<FlingSettings>): FlingSettings {
   const current = getSettings()
-  const updated = { ...current, ...patch }
+  let updated = { ...current, ...patch }
+  const connectionFieldsChanged = [
+    'host',
+    'port',
+    'username',
+    'remotePath',
+    'keyPath',
+    'sshConfigHost',
+    'clipboardTemplate',
+    'profiles'
+  ].some((key) => key in patch)
+
+  if (patch.activeProfileId && patch.activeProfileId !== current.activeProfileId && !connectionFieldsChanged) {
+    const selectedProfile = updated.profiles.find((profile) => profile.id === patch.activeProfileId)
+    updated = selectedProfile ? applyProfile(updated, selectedProfile) : syncActiveProfile(updated)
+  } else {
+    updated = syncActiveProfile(updated)
+  }
+
   store.set('settings', updated)
   return updated
 }

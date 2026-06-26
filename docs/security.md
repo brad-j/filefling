@@ -77,6 +77,7 @@ Renderer hardening:
 - preload exposes only a small `window.filefling` API
 - main-process IPC handlers validate renderer input
 - SSH config import exposes parsed concrete host aliases only through the preload bridge
+- destination profiles are validated through the same Settings IPC path as the active connection
 - clipboard templates are plain string interpolation with a small allowlist of supported tokens
 
 ## SSH/path handling in place
