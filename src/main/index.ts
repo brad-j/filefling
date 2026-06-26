@@ -5,7 +5,8 @@ import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { sendFile, getHistory, clearHistory, setStatusWindow, onStatus } from './sender'
 import { getSettings, updateSettings } from './settings'
-import type { FlingSettings, SendStatus } from './types'
+import { validateSendFileOptions, validateSettingsPatch } from './validation'
+import type { SendStatus } from './types'
 
 let mb: Menubar | null = null
 
@@ -51,11 +52,14 @@ function setTrayIconState(state: SendStatus): void {
 
 function createMenubar(): void {
   const preloadPath = join(__dirname, '../preload/index.cjs')
-  const rendererIndex = process.env.ELECTRON_RENDERER_URL ?? pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
+  const rendererIndex = !app.isPackaged && process.env.ELECTRON_RENDERER_URL
+    ? process.env.ELECTRON_RENDERER_URL
+    : pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
 
   mb = menubar({
     index: rendererIndex,
     icon: createTrayImage('idle'),
+    preloadWindow: true,
     browserWindow: {
       width: 360,
       height: 480,
@@ -70,7 +74,10 @@ function createMenubar(): void {
       webPreferences: {
         preload: preloadPath,
         contextIsolation: true,
-        nodeIntegration: false
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+        allowRunningInsecureContent: false
       }
     }
   })
@@ -78,6 +85,14 @@ function createMenubar(): void {
   mb.on('after-create-window', () => {
     if (mb?.window) {
       setStatusWindow(mb.window)
+
+      mb.window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+      mb.window.webContents.on('will-navigate', (event, url) => {
+        if (url !== rendererIndex) {
+          event.preventDefault()
+        }
+      })
 
       mb.window.webContents.on('before-input-event', (event, input) => {
         if (input.type === 'keyDown' && input.key === 'Escape') {
@@ -103,16 +118,16 @@ function createMenubar(): void {
 // ─── IPC Handlers ────────────────────────────────────────────────────
 
 function registerIpc(): void {
-  ipcMain.handle('fling:sendFile', (_event, opts: { filePath?: string; isScreenshot?: boolean }) => {
-    return sendFile(opts)
+  ipcMain.handle('fling:sendFile', (_event, opts: unknown) => {
+    return sendFile(validateSendFileOptions(opts))
   })
 
   ipcMain.handle('fling:getSettings', () => {
     return getSettings()
   })
 
-  ipcMain.handle('fling:updateSettings', (_event, patch: Partial<FlingSettings>) => {
-    return updateSettings(patch)
+  ipcMain.handle('fling:updateSettings', (_event, patch: unknown) => {
+    return updateSettings(validateSettingsPatch(patch))
   })
 
   ipcMain.handle('fling:getHistory', () => {

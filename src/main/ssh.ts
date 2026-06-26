@@ -3,6 +3,7 @@ import { readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { getSettings, readPrivateKey, getHostKey, setHostKey } from './settings'
+import { expandRemoteDir, joinRemotePath, shellQuote, stripTrailingSlash } from './remotePath'
 
 export interface SshResult {
   remotePath: string
@@ -33,21 +34,6 @@ function readKnownHosts(host: string, port: number): string | undefined {
     // known_hosts doesn't exist or isn't readable
   }
   return undefined
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`
-}
-
-function stripTrailingSlash(value: string): string {
-  return value.length > 1 ? value.replace(/\/+$/, '') : value
-}
-
-function expandRemoteDir(remoteDir: string, homeDir: string): string {
-  const trimmed = stripTrailingSlash(remoteDir.trim())
-  if (trimmed === '~') return homeDir
-  if (trimmed.startsWith('~/')) return `${homeDir}/${trimmed.slice(2)}`
-  return trimmed
 }
 
 function runCommand(conn: Client, command: string): Promise<string> {
@@ -122,7 +108,7 @@ export async function flingFile(
       try {
         const homeDir = stripTrailingSlash((await runCommand(conn, 'printf %s "$HOME"')).trim())
         const remoteDir = expandRemoteDir(settings.remotePath, homeDir || '.')
-        const remotePath = `${remoteDir}/${remoteFilename}`
+        const remotePath = joinRemotePath(remoteDir, remoteFilename)
 
         await runCommand(conn, `mkdir -p -- ${shellQuote(remoteDir)}`)
         await fastPut(conn, localPath, remotePath)

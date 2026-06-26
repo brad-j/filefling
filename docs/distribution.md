@@ -69,12 +69,15 @@ Before publishing a public release:
 
 1. Update `version` in `package.json`.
 2. Run `pnpm icons:generate` if icon assets changed.
-3. Run `pnpm typecheck`.
-4. Run `pnpm build`.
-5. Run `pnpm pack:mac` and launch `release/mac*/Fling.app`.
-6. Run `pnpm dist:mac` with signing/notarization credentials.
-7. Test the generated DMG on a clean macOS user account or another Mac.
-8. Upload the DMG/ZIP to GitHub Releases or your website.
+3. Run `pnpm security:audit`.
+4. Run `pnpm release:check`.
+5. Run `pnpm test:e2e`.
+6. Run `pnpm pack:mac` and launch `release/mac*/Fling.app`.
+7. Run `pnpm dist:mac` with signing/notarization credentials.
+8. Test the generated DMG on a clean macOS user account or another Mac.
+9. Upload the DMG/ZIP to GitHub Releases or your website.
+
+See `docs/security.md` for the detailed testing and security checklist.
 
 ## Current product TODOs before broad public release
 

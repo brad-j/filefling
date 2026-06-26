@@ -5,6 +5,7 @@
   "author": "brad-j",
   "license": "MIT",
   "private": true,
+  "packageManager": "pnpm@11.9.0",
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
@@ -16,6 +17,11 @@
     "pack:mac": "pnpm prepare:dist && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_NOTARIZE=true electron-builder --mac --dir",
     "dist:mac:unsigned": "pnpm prepare:dist && CSC_IDENTITY_AUTO_DISCOVERY=false SKIP_NOTARIZE=true electron-builder --mac dmg zip",
     "dist:mac": "pnpm prepare:dist && electron-builder --mac dmg zip",
+    "test": "pnpm test:unit",
+    "test:unit": "vitest run",
+    "test:e2e": "pnpm build && playwright test",
+    "release:check": "pnpm typecheck && pnpm test:unit && pnpm build",
+    "security:audit": "pnpm audit --prod",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
@@ -25,13 +31,14 @@
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/ssh2": "^1.15.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
-    "electron": "^33.2.0",
+    "electron": "^39.8.10",
     "electron-builder": "^26.15.3",
     "electron-vite": "^2.3.0",
     "postcss": "^8.4.49",
@@ -39,6 +46,7 @@
     "react-dom": "^19.0.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vitest": "^4.1.9"
   }
 }

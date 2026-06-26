@@ -1,6 +1,6 @@
 import Store from 'electron-store'
 import { readFileSync, statSync } from 'fs'
-import { homedir } from 'os'
+import { homedir, userInfo } from 'os'
 import { join } from 'path'
 import { APP_THEMES, type AppTheme, type FlingSettings, type HistoryItem } from './types'
 
@@ -49,9 +49,9 @@ const store = new Store<{
   name: 'fling',
   defaults: {
     settings: {
-      host: 'zedd',
+      host: '',
       port: 22,
-      username: 'brad',
+      username: userInfo().username,
       remotePath: '~/shared',
       keyPath: detectKeyPath(),
       screenshotDir: join(homedir(), 'Desktop', 'screenshots'),

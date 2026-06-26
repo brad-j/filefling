@@ -1,5 +1,7 @@
 import { BrowserWindow, clipboard, Notification } from 'electron'
 import { EventEmitter } from 'events'
+import { statSync } from 'fs'
+import { basename } from 'path'
 import { flingFile } from './ssh'
 import { getLatestScreenshot, sanitizeFilename, timestampFilename } from './files'
 import { getSettings, addHistoryItem, clearHistory, getHistory } from './settings'
@@ -32,6 +34,19 @@ function notify(title: string, body: string): void {
   }
 }
 
+function assertReadableFile(filePath: string): void {
+  let stat
+  try {
+    stat = statSync(filePath)
+  } catch {
+    throw new Error(`File does not exist: ${filePath}`)
+  }
+
+  if (!stat.isFile()) {
+    throw new Error(`Path is not a file: ${filePath}`)
+  }
+}
+
 /**
  * Core send flow:
  * 1. Resolve local file path (explicit or latest screenshot)
@@ -46,6 +61,13 @@ export async function sendFile(opts: {
 }): Promise<void> {
   const settings = getSettings()
   const isScreenshot = opts.isScreenshot ?? true
+
+  if (!settings.host.trim() || !settings.username.trim() || !settings.remotePath.trim() || !settings.keyPath.trim()) {
+    const error = 'Configure host, username, remote path, and SSH key path before sending'
+    broadcastStatus({ status: 'error', error })
+    notify('Fling — Setup required', error)
+    return
+  }
 
   // Resolve local file
   let localPath: string
@@ -62,14 +84,15 @@ export async function sendFile(opts: {
   }
 
   // Determine remote filename
-  const basename = localPath.split('/').pop() || 'screenshot.png'
+  const localBasename = basename(localPath) || 'screenshot.png'
   const remoteFilename = isScreenshot
-    ? timestampFilename(basename)
-    : sanitizeFilename(basename)
+    ? timestampFilename(localBasename)
+    : sanitizeFilename(localBasename)
 
   broadcastStatus({ status: 'sending', filename: remoteFilename })
 
   try {
+    assertReadableFile(localPath)
     const result = await flingFile(localPath, remoteFilename)
 
     // Copy remote path to clipboard

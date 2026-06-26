@@ -70,7 +70,7 @@ export default function SettingsPanel({
         label="Host"
         value={draft.host}
         onChange={(v) => handleChange('host', v)}
-        placeholder="zedd or 100.x.x.x"
+        placeholder="server-name or 100.x.x.x"
       />
 
       <div className="grid grid-cols-2 gap-2">
@@ -84,7 +84,7 @@ export default function SettingsPanel({
           label="Username"
           value={draft.username}
           onChange={(v) => handleChange('username', v)}
-          placeholder="brad"
+          placeholder="your-user"
         />
       </div>
 
