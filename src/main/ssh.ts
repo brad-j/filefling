@@ -3,10 +3,17 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { homedir, tmpdir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
-import { getSettings, readPrivateKey, getHostKey, setHostKey } from './settings'
+import { getSettings, readPrivateKey, getHostKeyRecord, setHostKeyRecord } from './settings'
 import { expandRemoteDir, joinRemotePath, shellQuote, stripTrailingSlash } from './remotePath'
 import { describeFileFlingError } from './errors'
-import type { ConnectionTestCheck, ConnectionTestResult, FlingSettings } from './types'
+import {
+  createHostKeyRecord,
+  describePresentedHostKey,
+  hostKeyId,
+  hostKeysMatch,
+  hostKeyVerificationMessage
+} from './hostKeys'
+import type { ConnectionTestCheck, ConnectionTestResult, FlingSettings, HostKeyRecord, HostKeyVerificationResult } from './types'
 
 export interface SshResult {
   remotePath: string
@@ -15,7 +22,7 @@ export interface SshResult {
 /**
  * Reads ~/.ssh/known_hosts and returns the host key for the given host, if present.
  */
-function readKnownHosts(host: string, port: number): string | undefined {
+function readKnownHosts(host: string, port: number): HostKeyRecord | undefined {
   const knownHostsPath = join(homedir(), '.ssh', 'known_hosts')
   try {
     const content = readFileSync(knownHostsPath, 'utf8')
@@ -23,6 +30,7 @@ function readKnownHosts(host: string, port: number): string | undefined {
       const parts = line.trim().split(/\s+/)
       if (parts.length < 3) continue
       const hosts = parts[0]
+      const algorithm = parts[1]
       const keyData = parts[2]
       const hostEntries = hosts.split(',')
 
@@ -30,7 +38,17 @@ function readKnownHosts(host: string, port: number): string | undefined {
       // Hashed entries are intentionally not decoded here; TOFU storage below
       // still protects future connections made by Fling.
       if (hostEntries.includes(host) || hostEntries.includes(`[${host}]:${port}`)) {
-        return keyData
+        const key = Buffer.from(keyData, 'base64')
+        const presented = describePresentedHostKey(key)
+        return createHostKeyRecord({
+          host,
+          port,
+          key: keyData,
+          algorithm: algorithm || presented.algorithm,
+          fingerprintSHA256: presented.fingerprintSHA256,
+          trustedAt: 0,
+          source: 'known_hosts'
+        })
       }
     }
   } catch {
@@ -97,13 +115,33 @@ function assertConnectionSettings(settings: FlingSettings): void {
   }
 }
 
-function connect(settings: FlingSettings): Promise<Client> {
+interface SshConnection {
+  conn: Client
+  hostKey?: HostKeyVerificationResult
+}
+
+function attachHostKeyVerification(err: Error, hostKey?: HostKeyVerificationResult): Error {
+  if (hostKey) {
+    Object.assign(err, { hostKeyVerification: hostKey })
+  }
+  return err
+}
+
+function readAttachedHostKeyVerification(err: unknown): HostKeyVerificationResult | undefined {
+  if (typeof err !== 'object' || err === null || !('hostKeyVerification' in err)) return undefined
+  return (err as { hostKeyVerification?: HostKeyVerificationResult }).hostKeyVerification
+}
+
+function connect(settings: FlingSettings): Promise<SshConnection> {
   assertConnectionSettings(settings)
 
   const privateKey = readPrivateKey(settings.keyPath)
-  const hostKeyId = `${settings.host}:${settings.port}`
-  const knownKey = getHostKey(hostKeyId) || getHostKey(settings.host) || readKnownHosts(settings.host, settings.port)
+  const id = hostKeyId(settings.host, settings.port)
+  const storedKey = getHostKeyRecord(id, settings.host, settings.port) || getHostKeyRecord(settings.host, settings.host, settings.port)
+  const knownHostsKey = readKnownHosts(settings.host, settings.port)
+  const knownKey = storedKey || knownHostsKey
   const conn = new Client()
+  let hostKeyVerification: HostKeyVerificationResult | undefined
 
   return new Promise((resolve, reject) => {
     let settled = false
@@ -113,9 +151,9 @@ function connect(settings: FlingSettings): Promise<Client> {
       settled = true
       if (err) {
         conn.end()
-        reject(err)
+        reject(attachHostKeyVerification(err, hostKeyVerification))
       } else {
-        resolve(conn)
+        resolve({ conn, hostKey: hostKeyVerification })
       }
     }
 
@@ -129,13 +167,54 @@ function connect(settings: FlingSettings): Promise<Client> {
       privateKey,
       readyTimeout: 15000,
       hostVerifier: (key: Buffer) => {
-        const presentedKey = key.toString('base64')
+        const presented = describePresentedHostKey(key)
+
         if (knownKey) {
-          return knownKey.trim() === presentedKey
+          if (hostKeysMatch(knownKey, presented.key)) {
+            hostKeyVerification = {
+              status: knownKey.source === 'known_hosts' ? 'matched-known-hosts' : 'matched-stored',
+              hostKeyId: id,
+              host: settings.host,
+              port: settings.port,
+              algorithm: knownKey.algorithm || presented.algorithm,
+              fingerprintSHA256: knownKey.fingerprintSHA256 || presented.fingerprintSHA256,
+              trustedAt: knownKey.trustedAt
+            }
+            return true
+          }
+
+          hostKeyVerification = {
+            status: 'mismatch',
+            hostKeyId: id,
+            host: settings.host,
+            port: settings.port,
+            algorithm: presented.algorithm,
+            fingerprintSHA256: presented.fingerprintSHA256,
+            previousAlgorithm: knownKey.algorithm,
+            previousFingerprintSHA256: knownKey.fingerprintSHA256,
+            trustedAt: knownKey.trustedAt
+          }
+          return false
         }
 
-        // No known key — trust on first use.
-        setHostKey(hostKeyId, presentedKey)
+        // No known key — trust on first use and store metadata for future UX.
+        const record = createHostKeyRecord({
+          host: settings.host,
+          port: settings.port,
+          key: presented.key,
+          algorithm: presented.algorithm,
+          fingerprintSHA256: presented.fingerprintSHA256
+        })
+        setHostKeyRecord(record)
+        hostKeyVerification = {
+          status: 'trusted-new',
+          hostKeyId: id,
+          host: settings.host,
+          port: settings.port,
+          algorithm: record.algorithm,
+          fingerprintSHA256: record.fingerprintSHA256,
+          trustedAt: record.trustedAt
+        }
         return true
       }
     })
@@ -147,7 +226,7 @@ export async function flingFile(
   remoteFilename: string
 ): Promise<SshResult> {
   const settings = getSettings()
-  const conn = await connect(settings)
+  const { conn } = await connect(settings)
 
   try {
     const homeDir = stripTrailingSlash((await runCommand(conn, 'printf %s "$HOME"')).trim())
@@ -165,6 +244,7 @@ export async function flingFile(
 export async function testConnection(settings: FlingSettings = getSettings()): Promise<ConnectionTestResult> {
   const checks: ConnectionTestCheck[] = [
     { id: 'settings', label: 'Required settings present', status: 'pending' },
+    { id: 'host-key', label: 'Host key trust', status: 'pending' },
     { id: 'ssh', label: 'SSH authentication', status: 'pending' },
     { id: 'remote-dir', label: 'Remote directory writable', status: 'pending' },
     { id: 'upload', label: 'Test upload and cleanup', status: 'pending' }
@@ -190,7 +270,11 @@ export async function testConnection(settings: FlingSettings = getSettings()): P
     const localTestPath = join(tempDir, testFilename)
     writeFileSync(localTestPath, 'FileFling connection test\n')
 
-    conn = await connect(settings)
+    const connection = await connect(settings)
+    conn = connection.conn
+    if (connection.hostKey) {
+      mark('host-key', 'success', hostKeyVerificationMessage(connection.hostKey))
+    }
     mark('ssh', 'success', `Connected as ${settings.username}@${settings.host}`)
 
     const homeDir = stripTrailingSlash((await runCommand(conn, 'printf %s "$HOME"')).trim())
@@ -213,11 +297,22 @@ export async function testConnection(settings: FlingSettings = getSettings()): P
       ok: true,
       message: `Connected to ${settings.host}. Test upload succeeded.`,
       remotePath,
+      hostKey: connection.hostKey,
       checks
     }
   } catch (err) {
     const friendlyError = describeFileFlingError(err)
     const message = friendlyError.message
+    const hostKeyVerification = readAttachedHostKeyVerification(err)
+
+    if (hostKeyVerification) {
+      mark(
+        'host-key',
+        hostKeyVerification.status === 'mismatch' ? 'error' : 'success',
+        hostKeyVerificationMessage(hostKeyVerification)
+      )
+    }
+
     const firstPending = checks.find((check) => check.status === 'pending')
     if (firstPending) {
       firstPending.status = 'error'
@@ -227,6 +322,7 @@ export async function testConnection(settings: FlingSettings = getSettings()): P
     return {
       ok: false,
       message,
+      hostKey: hostKeyVerification,
       checks
     }
   } finally {

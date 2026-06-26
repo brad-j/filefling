@@ -2,7 +2,8 @@ import Store from 'electron-store'
 import { readFileSync, statSync } from 'fs'
 import { homedir, userInfo } from 'os'
 import { join } from 'path'
-import { APP_THEMES, type AppTheme, type FlingSettings, type HistoryItem } from './types'
+import { normalizeStoredHostKey } from './hostKeys'
+import { APP_THEMES, type AppTheme, type FlingSettings, type HistoryItem, type HostKeyRecord } from './types'
 
 function isFile(path: string): boolean {
   try {
@@ -24,10 +25,12 @@ function resolveHomePath(path: string): string {
   return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
 }
 
+type StoredHostKey = string | HostKeyRecord
+
 const store = new Store<{
   settings: FlingSettings
   history: HistoryItem[]
-  hostKeys: Record<string, string>
+  hostKeys: Record<string, StoredHostKey>
 }>({
   name: 'filefling',
   defaults: {
@@ -110,12 +113,37 @@ export function clearHistory(): void {
 }
 
 export function getHostKey(host: string): string | undefined {
-  return store.get('hostKeys')[host]
+  const value = store.get('hostKeys')[host]
+  return typeof value === 'string' ? value : value?.key
+}
+
+export function getHostKeyRecord(id: string, fallbackHost?: string, fallbackPort?: number): HostKeyRecord | undefined {
+  const value = store.get('hostKeys')[id]
+  if (!value) return undefined
+  return normalizeStoredHostKey(id, value, fallbackHost, fallbackPort)
+}
+
+export function getHostKeyRecords(): HostKeyRecord[] {
+  return Object.entries(store.get('hostKeys'))
+    .map(([id, value]) => normalizeStoredHostKey(id, value))
+    .sort((a, b) => a.host.localeCompare(b.host) || a.port - b.port)
 }
 
 export function setHostKey(host: string, key: string): void {
   const hostKeys = store.get('hostKeys')
   hostKeys[host] = key
+  store.set('hostKeys', hostKeys)
+}
+
+export function setHostKeyRecord(record: HostKeyRecord): void {
+  const hostKeys = store.get('hostKeys')
+  hostKeys[record.id] = record
+  store.set('hostKeys', hostKeys)
+}
+
+export function forgetHostKey(id: string): void {
+  const hostKeys = store.get('hostKeys')
+  delete hostKeys[id]
   store.set('hostKeys', hostKeys)
 }
 

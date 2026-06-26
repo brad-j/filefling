@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { ConnectionTestResult, FlingSettings, HistoryItem, SendProgress } from '../main/types'
+import type { ConnectionTestResult, FlingSettings, HistoryItem, HostKeyRecord, SendProgress } from '../main/types'
 
 const api = {
   sendFile: (opts: { filePath?: string; isScreenshot?: boolean }) =>
@@ -13,6 +13,12 @@ const api = {
 
   testConnection: (patch: Partial<FlingSettings>): Promise<ConnectionTestResult> =>
     ipcRenderer.invoke('filefling:testConnection', patch),
+
+  getHostKeys: (): Promise<HostKeyRecord[]> =>
+    ipcRenderer.invoke('filefling:getHostKeys'),
+
+  forgetHostKey: (hostKeyId: string): Promise<void> =>
+    ipcRenderer.invoke('filefling:forgetHostKey', hostKeyId),
 
   getHistory: (): Promise<HistoryItem[]> =>
     ipcRenderer.invoke('filefling:getHistory'),

@@ -28,7 +28,8 @@ Example pasted value:
 - **Connection test upload** — onboarding can run a real test upload and cleanup before finishing setup.
 - **Auto-copy remote path** — successful sends copy the remote path to the clipboard.
 - **Send history** — keeps the last 10 sends; click a successful item to copy its path again.
-- **TOFU host key verification** — trusts on first use and verifies future connections against the stored host key.
+- **TOFU host key verification** — trusts on first use and verifies future connections against stored host key metadata.
+- **Host key management** — view trusted host key fingerprints in Settings and forget stale keys after server rebuilds.
 - **Friendly error messages** — common SSH/file failures are mapped to actionable messages.
 - **Settings UI** — configure host, port, username, SSH key path, remote directory, screenshot directory, and theme.
 - **Themes** — Terminal Green, Graphite, and Light.
@@ -134,6 +135,10 @@ FileFling is a local Electron app that reads user-selected/local screenshot file
 
 Security measures currently in place:
 
+- SSH host keys are trusted on first use and stored with host, port, algorithm, fingerprint, and trust timestamp.
+- Future connections verify the server against the stored host key.
+- Host key mismatches produce a clear server-identity warning.
+- Trusted host keys can be reviewed and forgotten from Settings.
 - Renderer uses `contextIsolation: true`.
 - Renderer has `nodeIntegration: false`.
 - Renderer sandbox is enabled.
@@ -146,7 +151,7 @@ Security measures currently in place:
 - Remote directories are shell-quoted before `mkdir -p`.
 - Uploaded filenames are sanitized.
 - Local send paths must be files, not directories.
-- Host keys are verified with trust-on-first-use storage.
+- Host keys are verified with trust-on-first-use storage and user-visible fingerprint metadata.
 
 See `docs/security.md` for the release security checklist and current security TODOs.
 

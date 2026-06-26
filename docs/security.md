@@ -84,6 +84,8 @@ Renderer hardening:
 - uploaded filenames are sanitized
 - local send paths are checked to be files, not directories
 - host keys are verified with TOFU storage
+- host-key metadata includes host, port, algorithm, SHA256 fingerprint, and trust timestamp
+- trusted host keys can be reviewed and forgotten from Settings
 - common SSH/file failures are mapped to actionable user-facing messages
 
 ## Known product/security TODOs
@@ -91,7 +93,6 @@ Renderer hardening:
 These should be handled before a broad launch, even if they are not blockers for a small beta:
 
 - Consider adding the connection test action to Settings for post-onboarding edits.
-- Improve UX for first-time host-key trust and host-key mismatch.
-- Consider storing host-key metadata with algorithm/fingerprint for better user-facing warnings.
+- Consider adding an explicit confirmation dialog before trusting a first-seen host key.
 - Keep Electron patched; `pnpm security:audit` must pass before release.
 - Revisit macOS entitlements after signing. Keep them as narrow as possible while still supporting Electron and native modules.

@@ -32,6 +32,29 @@ export interface SendProgress {
   remotePath?: string
 }
 
+export interface HostKeyRecord {
+  id: string
+  host: string
+  port: number
+  key: string
+  algorithm: string
+  fingerprintSHA256: string
+  trustedAt: number
+  source: 'filefling' | 'known_hosts' | 'legacy'
+}
+
+export interface HostKeyVerificationResult {
+  status: 'trusted-new' | 'matched-stored' | 'matched-known-hosts' | 'mismatch'
+  hostKeyId: string
+  host: string
+  port: number
+  algorithm: string
+  fingerprintSHA256: string
+  trustedAt?: number
+  previousAlgorithm?: string
+  previousFingerprintSHA256?: string
+}
+
 export interface ConnectionTestCheck {
   id: string
   label: string
@@ -43,5 +66,6 @@ export interface ConnectionTestResult {
   ok: boolean
   message: string
   remotePath?: string
+  hostKey?: HostKeyVerificationResult
   checks: ConnectionTestCheck[]
 }

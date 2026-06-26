@@ -5,8 +5,8 @@ import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { sendFile, getHistory, clearHistory, setStatusWindow, onStatus } from './sender'
 import { testConnection } from './ssh'
-import { getSettings, updateSettings } from './settings'
-import { validateSendFileOptions, validateSettingsPatch } from './validation'
+import { forgetHostKey, getHostKeyRecords, getSettings, updateSettings } from './settings'
+import { validateHostKeyId, validateSendFileOptions, validateSettingsPatch } from './validation'
 import type { SendStatus } from './types'
 
 let mb: Menubar | null = null
@@ -134,6 +134,14 @@ function registerIpc(): void {
   ipcMain.handle('filefling:testConnection', (_event, patch: unknown = {}) => {
     const settings = { ...getSettings(), ...validateSettingsPatch(patch) }
     return testConnection(settings)
+  })
+
+  ipcMain.handle('filefling:getHostKeys', () => {
+    return getHostKeyRecords()
+  })
+
+  ipcMain.handle('filefling:forgetHostKey', (_event, hostKeyId: unknown) => {
+    forgetHostKey(validateHostKeyId(hostKeyId))
   })
 
   ipcMain.handle('filefling:getHistory', () => {

@@ -1,3 +1,5 @@
+import type { HostKeyVerificationResult } from './types'
+
 export type FriendlyErrorKind =
   | 'setup-required'
   | 'missing-key'
@@ -37,6 +39,11 @@ function errorCode(error: unknown): string {
 
 function includesAny(value: string, needles: string[]): boolean {
   return needles.some((needle) => value.includes(needle))
+}
+
+function attachedHostKeyVerification(error: unknown): HostKeyVerificationResult | undefined {
+  if (typeof error !== 'object' || error === null || !('hostKeyVerification' in error)) return undefined
+  return (error as { hostKeyVerification?: HostKeyVerificationResult }).hostKeyVerification
 }
 
 function friendly(
@@ -148,6 +155,16 @@ export function describeFileFlingError(error: unknown): FriendlyFileFlingError {
       'connection-timeout',
       'FileFling — SSH timed out',
       'Connection timed out. Check network access, VPN/Tailscale, host, and port.',
+      detail
+    )
+  }
+
+  const hostKeyVerification = attachedHostKeyVerification(error)
+  if (hostKeyVerification?.status === 'mismatch') {
+    return friendly(
+      'host-key-mismatch',
+      'FileFling — Host key mismatch',
+      `Host key for ${hostKeyVerification.host}:${hostKeyVerification.port} changed. Previously trusted ${hostKeyVerification.previousFingerprintSHA256 || 'unknown'}; server presented ${hostKeyVerification.fingerprintSHA256}.`,
       detail
     )
   }

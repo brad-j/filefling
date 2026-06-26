@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { APP_THEMES, type AppTheme, type FlingSettings } from '../../../main/types'
+import { APP_THEMES, type AppTheme, type FlingSettings, type HostKeyRecord } from '../../../main/types'
 
 const THEME_LABELS: Record<AppTheme, string> = {
   terminal: 'Terminal Green',
@@ -18,10 +18,24 @@ export default function SettingsPanel({
 }) {
   const [draft, setDraft] = useState<FlingSettings | null>(settings)
   const [saved, setSaved] = useState(false)
+  const [hostKeys, setHostKeys] = useState<HostKeyRecord[]>([])
 
   useEffect(() => {
     setDraft(settings)
   }, [settings])
+
+  useEffect(() => {
+    window.filefling.getHostKeys().then(setHostKeys)
+  }, [])
+
+  const refreshHostKeys = async () => {
+    setHostKeys(await window.filefling.getHostKeys())
+  }
+
+  const handleForgetHostKey = async (hostKeyId: string) => {
+    await window.filefling.forgetHostKey(hostKeyId)
+    await refreshHostKeys()
+  }
 
   const handleChange = (field: keyof FlingSettings, value: string | number) => {
     if (!draft) return
@@ -102,6 +116,8 @@ export default function SettingsPanel({
         placeholder="~/.ssh/id_ed25519"
       />
 
+      <HostKeySection hostKeys={hostKeys} onForget={handleForgetHostKey} />
+
       <div className="theme-divider h-px my-1" />
 
       <h2 className="theme-section-title text-xs font-semibold uppercase tracking-[0.2em]">
@@ -126,6 +142,66 @@ export default function SettingsPanel({
       >
         {saved ? '✓ Saved' : 'Save Settings'}
       </button>
+    </div>
+  )
+}
+
+function formatTrustedAt(timestamp: number): string {
+  if (!timestamp) return 'legacy trust'
+  return new Date(timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function HostKeySection({
+  hostKeys,
+  onForget
+}: {
+  hostKeys: HostKeyRecord[]
+  onForget: (hostKeyId: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <h3 className="theme-muted text-[10px] font-medium tracking-wide">Trusted Host Keys</h3>
+        <span className="theme-muted-soft text-[9px]">TOFU</span>
+      </div>
+
+      {hostKeys.length === 0 ? (
+        <div className="theme-dropzone rounded-lg border px-2.5 py-2">
+          <p className="theme-muted-soft text-[10px] leading-relaxed">
+            No FileFling-trusted host keys yet. The first successful connection will trust and store the server key.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {hostKeys.map((hostKey) => (
+            <div key={hostKey.id} className="theme-dropzone rounded-lg border px-2.5 py-2 flex items-start gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="theme-text text-[10px] font-mono truncate">
+                  {hostKey.host}:{hostKey.port}
+                </p>
+                <p className="theme-muted text-[9px] font-mono truncate">
+                  {hostKey.algorithm} · {hostKey.fingerprintSHA256}
+                </p>
+                <p className="theme-muted-soft text-[9px]">
+                  Trusted {formatTrustedAt(hostKey.trustedAt)}{hostKey.source === 'legacy' ? ' · migrated legacy key' : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onForget(hostKey.id)}
+                className="theme-link text-[9px] transition-colors flex-shrink-0"
+                title="Forget this host key. The next connection will trust the presented key again."
+              >
+                Forget
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <p className="theme-muted-soft text-[9px] leading-relaxed">
+        If a server is rebuilt or its SSH host key changes, forget the old key here and run the connection test again.
+      </p>
     </div>
   )
 }

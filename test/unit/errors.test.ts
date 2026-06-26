@@ -34,6 +34,26 @@ describe('friendly error mapping', () => {
     expect(friendly.message).toMatch(/server identity/)
   })
 
+  it('includes host-key mismatch fingerprints when verification metadata is attached', () => {
+    const err = Object.assign(new Error('Host denied (verification failed)'), {
+      hostKeyVerification: {
+        status: 'mismatch' as const,
+        hostKeyId: 'devbox:22',
+        host: 'devbox',
+        port: 22,
+        algorithm: 'ssh-ed25519',
+        fingerprintSHA256: 'SHA256:new',
+        previousAlgorithm: 'ssh-ed25519',
+        previousFingerprintSHA256: 'SHA256:old'
+      }
+    })
+    const friendly = describeFileFlingError(err)
+
+    expect(friendly.kind).toBe('host-key-mismatch')
+    expect(friendly.message).toContain('SHA256:old')
+    expect(friendly.message).toContain('SHA256:new')
+  })
+
   it('maps remote write failures to remote path guidance', () => {
     const friendly = describeFileFlingError(new Error('Remote directory is not writable: /srv/uploads'))
 

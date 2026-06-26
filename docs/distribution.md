@@ -84,5 +84,6 @@ See `docs/security.md` for the detailed testing and security checklist.
 These are not packaging blockers, but they will matter for non-technical users:
 
 - Consider adding the onboarding test-connection action to Settings for later edits.
+- Consider adding an explicit confirmation dialog before trusting a first-seen host key.
 - Keep expanding friendly SSH/file error coverage as new real-world failures appear.
 - Consider auto-update after the first public release.

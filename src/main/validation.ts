@@ -105,6 +105,10 @@ export function validateSettingsPatch(value: unknown): Partial<FlingSettings> {
   return patch
 }
 
+export function validateHostKeyId(value: unknown): string {
+  return assertReasonableString(value, 'hostKeyId')
+}
+
 export function validateSendFileOptions(value: unknown): SendFileOptions {
   if (!isRecord(value)) {
     throw new Error('send options must be an object')
