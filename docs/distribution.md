@@ -15,8 +15,10 @@ pnpm dist:mac:unsigned
 Outputs are written to `release/`.
 
 Unsigned builds are useful for testing packaging, icons, startup behavior, and
-native dependencies. They are **not** a clean end-user experience: Gatekeeper may
-show unidentified-developer/malware-verification warnings.
+native dependencies. The unsigned beta scripts apply an ad-hoc code signature so
+macOS sees a structurally valid app bundle, but they are **not** a clean end-user
+experience: Gatekeeper may still show unidentified-developer/malware-verification
+warnings.
 
 ## What requires the Apple Developer account
 
@@ -60,6 +62,7 @@ pnpm dist:mac
 - `electron-builder.yml` — packaging config
 - `build/icon.icns` — packaged app icon
 - `build/entitlements.mac.plist` — hardened runtime entitlements
+- `scripts/adhoc-sign-mac.cjs` — ad-hoc signing hook used by unsigned beta builds
 - `scripts/notarize.cjs` — notarization hook
 - `scripts/generate-icons.mjs` — regenerates tray PNGs and `build/icon.icns`
 
