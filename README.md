@@ -6,12 +6,13 @@ It is built for the workflow of talking to a CLI AI agent on a remote machine vi
 
 ## Core workflow
 
-1. Configure one or more SSH destinations.
-2. Pick the active destination when needed.
-3. Press `⌘⇧F` to send the latest screenshot, or drag a file into the menubar dropdown.
-4. FileFling uploads the file over SFTP.
-5. The configured clipboard output is copied to your clipboard.
-6. Paste the path or prompt into your remote shell, tmux session, or CLI agent chat.
+1. Paste an IP, hostname, or SSH command, such as `ssh me@server.local`.
+2. Optionally give the destination a name, then click **Save destination**.
+3. Press `⌘⇧F` to send the latest screenshot, or drop any file into the menubar dropdown.
+4. FileFling uploads over SFTP and copies the remote path to the clipboard.
+5. Paste the path into your remote shell, tmux session, or CLI agent chat.
+
+The common settings are inferred: port `22`, `~/shared`, the current macOS username, and the first standard private key found in `~/.ssh`. They remain editable under **Connection details**.
 
 Default pasted value:
 
@@ -26,47 +27,34 @@ Default pasted value:
 - **Latest screenshot preview** — shows a thumbnail, filename, time, and size before sending.
 - **Drag & drop upload** — drop a file onto the dropdown to send it.
 - **SSH/SFTP transport** — uses the Node `ssh2` library; no external `scp` binary required.
-- **First-run onboarding** — guided setup flow for SSH destination details.
-- **Connection test upload** — onboarding can run a real test upload and cleanup before finishing setup.
+- **One-field setup** — paste an IP, hostname, `user@host`, HTTPS hostname, or complete `ssh …` command.
+- **Optional connection test** — run a real test upload and cleanup without blocking setup.
 - **SSH config import** — select concrete hosts from `~/.ssh/config` to fill host, user, port, and identity file.
 - **Destination profiles** — keep multiple SSH destinations and switch between them from the main view.
 - **Clipboard output templates** — copy a raw path, Markdown, or a reusable agent prompt after upload.
 - **Auto-copy remote output** — successful sends copy the rendered clipboard template.
-- **Send history** — keeps the last 10 sends; search, copy, retry/send again, reveal local files, or delete individual items.
+- **Compact send history** — keeps the last 10 sends and lets you copy a recent result again.
 - **TOFU host key verification** — trusts on first use and verifies future connections against stored host key metadata.
 - **Host key management** — view trusted host key fingerprints in Settings and forget stale keys after server rebuilds.
 - **Friendly error messages** — common SSH/file failures are mapped to actionable messages.
 - **Settings UI** — configure host, port, username, SSH key path, remote directory, screenshot directory, and theme.
 - **Themes** — Terminal Green, Graphite, and Light.
 
-## First-run onboarding
+## First-run setup
 
-On first launch, FileFling opens a setup flow instead of dropping users into an empty app.
+On first launch, FileFling asks one question: **Where should files go?** Paste any of these:
 
-The onboarding flow can import a concrete host from `~/.ssh/config`, or collect values manually:
+```text
+100.64.1.2
+me@server.local
+server.local:2222
+ssh -i ~/.ssh/work -p 2222 me@server.local
+https://my-vm.exe.xyz/
+```
 
-- SSH config host alias, optional
-- Host
-- Port
-- Username
-- Remote path
-- SSH key path
-- Screenshot directory
+A name is optional. Port, username, upload folder, and SSH key are available under **Connection details**, but the defaults should work for a typical key-based SSH setup. Hosts from `~/.ssh/config` are suggested in the server field.
 
-Then it can run a connection test that:
-
-1. Validates required settings.
-2. Connects over SSH.
-3. Verifies SSH authentication.
-4. Resolves the remote home directory for `~/` paths.
-5. Creates the remote directory if needed.
-6. Confirms the remote directory is writable.
-7. Uploads a tiny hidden `.filefling-test-...txt` file.
-8. Removes the test file.
-
-Setup can only be finished after the test succeeds. Users may also choose **Later** to skip onboarding and return through Settings.
-
-Existing installs with complete SSH settings are migrated so onboarding does not unexpectedly reappear.
+**Test** is optional. It verifies authentication, creates the remote directory if needed, uploads a tiny temporary file, and removes it. **Save destination** is enough to finish setup.
 
 ## Settings
 
@@ -76,16 +64,12 @@ Main settings:
 
 | Setting | Purpose |
 | --- | --- |
-| Active Destination | Named SSH destination/profile used for sends. |
-| SSH Config Host | Optional alias imported from `~/.ssh/config`. |
-| Host | SSH host, Tailscale hostname/IP, or server name. |
-| Port | SSH port, usually `22`. |
-| Username | Remote SSH username. |
-| Remote Path | Directory to upload into, e.g. `~/shared`. |
-| SSH Key Path | Private key path, e.g. `~/.ssh/id_ed25519`. |
-| Screenshot Directory | Local directory scanned for the latest screenshot. |
-| Clipboard Template | Text rendered and copied after successful uploads. |
-| Theme | App appearance. |
+| Server | IP, hostname, `user@host`, SSH command, or HTTPS hostname. |
+| Name | Optional label used when switching destinations. |
+| Connection details | Username, SSH port, remote upload folder, and private key. |
+| Screenshot folder | Local directory scanned for the latest screenshot. |
+| Copied text | Template rendered and copied after successful uploads. |
+| Appearance | Dark, Light, or Terminal. |
 
 The local app store is typically located at:
 
@@ -105,14 +89,9 @@ FileFling supports multiple named destinations. Each destination stores its own:
 - SSH config alias
 - Clipboard template
 
-The active destination is used for hotkey sends, drag-and-drop uploads, test uploads, and history retry/send-again actions. When more than one destination exists, the main view shows a destination picker above the drop zone.
+The active destination is used for hotkey sends, drag-and-drop uploads, and test uploads. When more than one destination exists, the main view shows a destination picker above the send card.
 
-Manage destinations from Settings:
-
-- Rename the active destination.
-- Create a new destination copied from the current settings.
-- Delete a destination, as long as at least one remains.
-- Save connection/clipboard edits back into the active destination.
+Manage destinations from Settings with **Add another** and **Remove this destination**. When multiple destinations exist, the main view shows a compact destination picker.
 
 Existing single-destination installs are migrated into a `Default` profile.
 
@@ -142,6 +121,41 @@ Host devbox
 Selecting `devbox` fills the connection fields with the resolved host, username, port, and key path. FileFling still performs uploads through its own `ssh2` transport; advanced OpenSSH options such as `ProxyJump`, `Match`, agent forwarding, and custom `ProxyCommand` are not applied yet.
 
 Wildcard hosts such as `Host *.internal` are ignored in the picker because they are patterns, not concrete destinations.
+
+## exe.dev
+
+[exe.dev](https://exe.dev/docs/what-is-exe) VMs work as standard SSH destinations. Create or list your VMs from Terminal, then paste the VM hostname into FileFling:
+
+```bash
+ssh exe.dev
+ssh exe.dev ls --json
+```
+
+```text
+my-vm.exe.xyz
+```
+
+FileFling recognizes `*.exe.xyz` and defaults to:
+
+- Host: `my-vm.exe.xyz`
+- Username: `exedev`
+- Port: `22`
+- Upload folder: `~/shared`
+- SSH key: the first standard local key, or the key supplied in a pasted `ssh -i …` command
+
+exe.dev must know that key. If needed, add it with the exe.dev web UI or CLI. When several local keys exist, paste the exact working command, for example:
+
+```text
+ssh -i ~/.ssh/id_ed25519_exe my-vm.exe.xyz
+```
+
+The VM's HTTPS front door is separate from SSH file storage. `https://my-vm.exe.xyz/` proxies to a web server running on the VM; it does not automatically expose `~/shared`. To produce browser URLs for uploads:
+
+1. Run a web server rooted at `~/shared` on the VM, for example on port `8000`.
+2. Point the exe.dev proxy at it with `ssh exe.dev share port my-vm 8000`.
+3. Set FileFling's **Copied text** preference to `https://my-vm.exe.xyz/{{filename}}`.
+
+exe.dev HTTPS proxies are private by default. Use `ssh exe.dev share set-public my-vm` only when uploaded files should be public. See the [exe.dev proxy documentation](https://exe.dev/docs/proxy) for access and port details.
 
 ## Clipboard output templates
 
@@ -179,36 +193,15 @@ Unknown placeholders are left visible so mistakes are easy to spot. Multiline te
 
 The main dropdown shows the latest screenshot from the configured screenshot directory before upload.
 
-The preview includes:
+The preview includes a thumbnail, local filename, and file size. Pressing **Send screenshot** uploads that file. If no preview is available, FileFling resolves the latest screenshot at send time.
 
-- Thumbnail, when macOS can generate one
-- Local filename
-- Modified time
-- File size
-- Refresh action
+## Recent sends
 
-Pressing **Send Previewed Screenshot** uploads the shown file. If no preview is available, FileFling falls back to resolving the latest screenshot at send time.
-
-## History actions
-
-The Recent list stores the last 10 sends with local file metadata when available.
-
-Available actions:
-
-- Click a successful row to copy the rendered clipboard output.
-- **Copy raw** copies only the remote path.
-- **Retry** retries a failed upload when the original local file is still available.
-- **Send again** uploads the same local file again.
-- **Reveal** opens the local file in Finder.
-- **Delete** removes one history item.
-- **Clear** removes all history.
-- Search filters by filename, remote path, local path, or error text.
-
-Older history entries created before this feature may not have local path or file size metadata, so retry/reveal may not be available for those items.
+The collapsed **Recent** list stores the last 10 sends. Open it and click a successful row to copy the same rendered clipboard output again. Failed sends remain visible, and **Clear recent** removes the list.
 
 ## Screenshot and filename behavior
 
-Screenshots sent via hotkey or the **Send Previewed Screenshot** / latest screenshot button are renamed to a clean timestamp:
+Screenshots sent via hotkey or the **Send screenshot** button are renamed to a clean timestamp:
 
 ```text
 2026-06-25_143015.png
@@ -350,7 +343,7 @@ Then start the dev app:
 pnpm dev
 ```
 
-If your SSH details are already filled in, onboarding should open at the test step.
+The one-page destination setup will open with any existing details prefilled.
 
 ## Build
 

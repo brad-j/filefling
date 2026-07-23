@@ -8,7 +8,7 @@ import type { AppTheme, DestinationProfile, FlingSettings, HistoryItem } from '.
 
 type View = 'main' | 'settings' | 'onboarding'
 
-const DEFAULT_THEME: AppTheme = 'terminal'
+const DEFAULT_THEME: AppTheme = 'graphite'
 
 export default function App() {
   const [view, setView] = useState<View>('main')
@@ -58,17 +58,17 @@ export default function App() {
   return (
     <div data-theme={theme} className="filefling-window w-full h-full flex flex-col">
       {/* ─── Header ─── */}
-      <header className="theme-header flex items-center justify-between px-4 py-3 border-b">
+      <header className="theme-header app-header flex items-center justify-between px-4 py-3 border-b">
         <div className="flex items-center gap-2">
           <FlingLogo state={status} />
-          <h1 className="theme-title text-sm font-semibold tracking-[0.18em]">FILEFLING</h1>
+          <h1 className="theme-title text-sm font-semibold">FileFling</h1>
         </div>
         {view === 'settings' ? (
           <button
             onClick={() => setView('main')}
             className="theme-link text-xs transition-colors"
           >
-            ← Back
+            Done
           </button>
         ) : view === 'onboarding' ? null : (
           <button
@@ -95,7 +95,7 @@ export default function App() {
             }}
           />
         ) : view === 'main' ? (
-          <div className="flex flex-col gap-3 p-4 animate-fade-in">
+          <div className="home-view flex flex-col gap-3 p-4 animate-fade-in">
             {settings && (
               <DestinationSwitcher
                 profiles={settings.profiles}
@@ -118,7 +118,7 @@ export default function App() {
       {/* ─── Footer ─── */}
       <footer className="theme-footer px-4 py-2 border-t">
         <p className="theme-muted-soft text-[10px] text-center tracking-wide">
-          {view === 'onboarding' ? 'Run setup once, fling files fast forever' : <><span className="theme-hotkey">⌘⇧F</span> to send latest screenshot</>}
+          {view === 'onboarding' ? 'Files are sent securely over SSH' : <><span className="theme-hotkey">⌘⇧F</span> sends the latest screenshot</>}
         </p>
       </footer>
     </div>
@@ -137,16 +137,17 @@ function DestinationSwitcher({
   if (profiles.length <= 1) return null
 
   return (
-    <label className="flex flex-col gap-1">
-      <span className="theme-muted text-[10px] font-medium tracking-wide">Destination</span>
+    <label className="destination-switcher">
+      <span>Sending to</span>
       <select
         value={activeProfileId}
         onChange={(event) => onSelect(event.target.value)}
-        className="theme-input border rounded-lg px-2.5 py-1.5 text-xs font-mono transition-all focus:outline-none"
+        className="theme-input"
+        aria-label="Destination"
       >
         {profiles.map((profile) => (
           <option key={profile.id} value={profile.id}>
-            {profile.name} → {profile.host || 'not configured'}
+            {profile.name}
           </option>
         ))}
       </select>

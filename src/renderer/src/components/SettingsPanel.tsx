@@ -1,56 +1,39 @@
-import { useState, useEffect } from 'react'
-import { APP_THEMES, type AppTheme, type DestinationProfile, type FlingSettings, type HostKeyRecord, type SshConfigHost } from '../../../main/types'
+import { useEffect, useMemo, useState } from 'react'
+import { APP_THEMES, type AppTheme, type ConnectionTestResult, type DestinationProfile, type FlingSettings, type HostKeyRecord, type SshConfigHost } from '../../../main/types'
+import { formatDestinationInput, parseDestinationInput } from '../destinationInput'
 
 const THEME_LABELS: Record<AppTheme, string> = {
-  terminal: 'Terminal Green',
-  graphite: 'Graphite',
+  terminal: 'Terminal',
+  graphite: 'Dark',
   light: 'Light'
 }
 
 export default function SettingsPanel({
   settings,
   onSettingsUpdated,
-  onSettingsPreview
+  setupMode = false,
+  onComplete
 }: {
   settings: FlingSettings | null
   onSettingsUpdated: (settings: FlingSettings) => void
   onSettingsPreview: (settings: FlingSettings) => void
+  setupMode?: boolean
+  onComplete?: (settings: FlingSettings) => void
 }) {
   const [draft, setDraft] = useState<FlingSettings | null>(settings)
+  const [destination, setDestination] = useState('')
+  const [name, setName] = useState('')
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null)
   const [hostKeys, setHostKeys] = useState<HostKeyRecord[]>([])
   const [sshConfigHosts, setSshConfigHosts] = useState<SshConfigHost[]>([])
 
-  useEffect(() => {
-    setDraft(settings)
-  }, [settings])
-
-  useEffect(() => {
-    window.filefling.getHostKeys().then(setHostKeys)
-    window.filefling.getSshConfigHosts().then(setSshConfigHosts)
-  }, [])
-
-  const refreshHostKeys = async () => {
-    setHostKeys(await window.filefling.getHostKeys())
-  }
-
-  const handleForgetHostKey = async (hostKeyId: string) => {
-    await window.filefling.forgetHostKey(hostKeyId)
-    await refreshHostKeys()
-  }
-
-  const handleChange = (field: keyof FlingSettings, value: string | number) => {
-    if (!draft) return
-    setDraft({ ...draft, [field]: value })
-  }
-
-  const applyDestinationProfile = (profileId: string) => {
-    if (!draft) return
-    const profile = draft.profiles.find((item) => item.id === profileId)
-    if (!profile) return
-
-    setDraft({
-      ...draft,
+  const loadProfile = (next: FlingSettings, profile: DestinationProfile) => {
+    const loaded = {
+      ...next,
       activeProfileId: profile.id,
       host: profile.host,
       port: profile.port,
@@ -59,488 +42,293 @@ export default function SettingsPanel({
       keyPath: profile.keyPath,
       sshConfigHost: profile.sshConfigHost,
       clipboardTemplate: profile.clipboardTemplate
-    })
-  }
-
-  const renameActiveDestinationProfile = (name: string) => {
-    if (!draft) return
-    setDraft({
-      ...draft,
-      profiles: draft.profiles.map((profile) =>
-        profile.id === draft.activeProfileId ? { ...profile, name } : profile
-      )
-    })
-  }
-
-  const createDestinationProfile = () => {
-    if (!draft) return
-    const profile: DestinationProfile = {
-      id: `profile-${Date.now()}`,
-      name: 'New Destination',
-      host: draft.host,
-      port: draft.port,
-      username: draft.username,
-      remotePath: draft.remotePath,
-      keyPath: draft.keyPath,
-      sshConfigHost: draft.sshConfigHost,
-      clipboardTemplate: draft.clipboardTemplate
     }
-
-    setDraft({
-      ...draft,
-      activeProfileId: profile.id,
-      profiles: [...draft.profiles, profile]
-    })
+    setDraft(loaded)
+    setDestination(formatDestinationInput(profile.host, profile.username, profile.port))
+    setName(profile.name === 'Default' || profile.name === 'New destination' ? '' : profile.name)
+    setMessage(null)
+    setTestResult(null)
   }
 
-  const deleteActiveDestinationProfile = () => {
-    if (!draft || draft.profiles.length <= 1) return
-    const remainingProfiles = draft.profiles.filter((profile) => profile.id !== draft.activeProfileId)
-    const nextProfile = remainingProfiles[0]
+  useEffect(() => {
+    if (!settings) return
+    setDraft(settings)
+    setDestination(formatDestinationInput(settings.host, settings.username, settings.port))
+    const active = settings.profiles.find((profile) => profile.id === settings.activeProfileId)
+    setName(active && active.name !== 'Default' ? active.name : '')
+  }, [settings])
 
-    setDraft({
-      ...draft,
-      activeProfileId: nextProfile.id,
-      profiles: remainingProfiles,
-      host: nextProfile.host,
-      port: nextProfile.port,
-      username: nextProfile.username,
-      remotePath: nextProfile.remotePath,
-      keyPath: nextProfile.keyPath,
-      sshConfigHost: nextProfile.sshConfigHost,
-      clipboardTemplate: nextProfile.clipboardTemplate
-    })
-  }
+  useEffect(() => {
+    window.filefling.getHostKeys().then(setHostKeys)
+    window.filefling.getSshConfigHosts().then(setSshConfigHosts)
+  }, [])
 
-  const applySshConfigHost = (alias: string) => {
+  const parsed = useMemo(() => parseDestinationInput(destination), [destination])
+
+  const updateDraft = (patch: Partial<FlingSettings>) => {
     if (!draft) return
-    if (!alias) {
-      setDraft({ ...draft, sshConfigHost: '' })
+    setDraft({ ...draft, ...patch })
+    setSaved(false)
+    setMessage(null)
+    setTestResult(null)
+  }
+
+  const handleDestinationChange = (value: string) => {
+    setDestination(value)
+    if (!draft) return
+
+    const next = parseDestinationInput(value)
+    if (!next) {
+      updateDraft({ host: '' })
       return
     }
 
-    const configHost = sshConfigHosts.find((host) => host.alias === alias)
-    if (!configHost) return
-
-    setDraft({
-      ...draft,
-      sshConfigHost: configHost.alias,
-      host: configHost.hostName || configHost.alias,
-      username: configHost.user || draft.username,
-      port: configHost.port || draft.port,
-      keyPath: configHost.identityFile || draft.keyPath
+    const configHost = sshConfigHosts.find((item) => item.alias === next.host)
+    const resolvedHost = configHost?.hostName || next.host
+    const isExeDev = next.isExeDev || resolvedHost.endsWith('.exe.xyz')
+    updateDraft({
+      host: resolvedHost,
+      username: next.username || configHost?.user || (isExeDev ? 'exedev' : draft.username),
+      port: next.port || configHost?.port || 22,
+      keyPath: next.keyPath || configHost?.identityFile || draft.keyPath,
+      sshConfigHost: configHost?.alias || ''
     })
+
+    if (!name && next.suggestedName) setName(next.suggestedName)
   }
 
-  const handleThemeChange = (theme: AppTheme) => {
-    if (!draft) return
-    const updatedDraft = { ...draft, theme }
-    setDraft(updatedDraft)
-    onSettingsPreview(updatedDraft)
+  const syncActiveProfile = (nextDraft: FlingSettings): FlingSettings => {
+    const fallbackName = parsed?.suggestedName || nextDraft.host.split('.')[0] || 'Destination'
+    return {
+      ...nextDraft,
+      profiles: nextDraft.profiles.map((profile) => profile.id === nextDraft.activeProfileId
+        ? {
+            ...profile,
+            name: name.trim() || fallbackName,
+            host: nextDraft.host,
+            port: nextDraft.port,
+            username: nextDraft.username,
+            remotePath: nextDraft.remotePath,
+            keyPath: nextDraft.keyPath,
+            sshConfigHost: nextDraft.sshConfigHost,
+            clipboardTemplate: nextDraft.clipboardTemplate
+          }
+        : profile)
+    }
   }
 
   const handleSave = async () => {
+    if (!draft || !parsed?.host) {
+      setMessage('Enter a server address first.')
+      return
+    }
+
+    setSaving(true)
+    setMessage(null)
+    try {
+      const ready = syncActiveProfile({ ...draft, onboardingComplete: true })
+      const updated = await window.filefling.updateSettings(ready)
+      setDraft(updated)
+      onSettingsUpdated(updated)
+      setSaved(true)
+      setMessage(`Saved ${updated.host}`)
+      onComplete?.(updated)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleTest = async () => {
+    if (!draft || !parsed?.host) {
+      setMessage('Enter a server address first.')
+      return
+    }
+
+    setTesting(true)
+    setMessage(null)
+    setTestResult(null)
+    try {
+      setTestResult(await window.filefling.testConnection(syncActiveProfile(draft)))
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const createDestination = () => {
     if (!draft) return
-    const updated = await window.filefling.updateSettings(draft)
-    setDraft(updated)
-    onSettingsUpdated(updated)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
+    const id = `profile-${Date.now()}`
+    const profile: DestinationProfile = {
+      id,
+      name: 'New destination',
+      host: '',
+      port: 22,
+      username: draft.username,
+      remotePath: '~/shared',
+      keyPath: draft.keyPath,
+      sshConfigHost: '',
+      clipboardTemplate: '{{remotePath}}'
+    }
+    loadProfile({ ...draft, profiles: [...draft.profiles, profile] }, profile)
+  }
+
+  const deleteDestination = () => {
+    if (!draft || draft.profiles.length <= 1) return
+    const remaining = draft.profiles.filter((profile) => profile.id !== draft.activeProfileId)
+    loadProfile({ ...draft, profiles: remaining }, remaining[0])
+  }
+
+  const forgetHostKey = async (id: string) => {
+    await window.filefling.forgetHostKey(id)
+    setHostKeys(await window.filefling.getHostKeys())
   }
 
   if (!draft) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <p className="theme-muted text-xs animate-pulse">Loading...</p>
-      </div>
-    )
+    return <div className="p-8 text-center theme-muted text-xs">Loading…</div>
   }
 
   return (
-    <div className="flex flex-col gap-3 p-4 animate-fade-in">
-      <h2 className="theme-section-title text-xs font-semibold uppercase tracking-[0.2em]">
-        Appearance
-      </h2>
-
-      <ThemePicker value={draft.theme} onChange={handleThemeChange} />
-
-      <div className="theme-divider h-px my-1" />
-
-      <h2 className="theme-section-title text-xs font-semibold uppercase tracking-[0.2em]">
-        Destination
-      </h2>
-
-      <DestinationProfileEditor
-        profiles={draft.profiles}
-        activeProfileId={draft.activeProfileId}
-        onSelect={applyDestinationProfile}
-        onRename={renameActiveDestinationProfile}
-        onCreate={createDestinationProfile}
-        onDelete={deleteActiveDestinationProfile}
-      />
-
-      <div className="theme-divider h-px my-1" />
-
-      <h2 className="theme-section-title text-xs font-semibold uppercase tracking-[0.2em]">
-        Connection
-      </h2>
-
-      <SshConfigPicker
-        hosts={sshConfigHosts}
-        selectedAlias={draft.sshConfigHost}
-        onSelect={applySshConfigHost}
-      />
-
-      <Field
-        label="Host"
-        value={draft.host}
-        onChange={(v) => handleChange('host', v)}
-        placeholder="server-name or 100.x.x.x"
-      />
-
-      <div className="grid grid-cols-2 gap-2">
-        <Field
-          label="Port"
-          value={String(draft.port)}
-          onChange={(v) => handleChange('port', parseInt(v) || 22)}
-          placeholder="22"
-        />
-        <Field
-          label="Username"
-          value={draft.username}
-          onChange={(v) => handleChange('username', v)}
-          placeholder="your-user"
-        />
+    <div className="simple-settings animate-fade-in">
+      <div className="setup-intro">
+        <p className="setup-kicker">{setupMode ? 'One quick setup' : 'Destination'}</p>
+        <h2>{setupMode ? 'Where should files go?' : 'Send files here'}</h2>
+        <p>Paste an IP, hostname, or the same <code>ssh …</code> command you use in Terminal.</p>
       </div>
 
-      <Field
-        label="Remote Path"
-        value={draft.remotePath}
-        onChange={(v) => handleChange('remotePath', v)}
-        placeholder="~/shared"
-      />
+      {draft.profiles.length > 1 && (
+        <label className="simple-field">
+          <span>Saved destinations</span>
+          <select
+            value={draft.activeProfileId}
+            onChange={(event) => {
+              const profile = draft.profiles.find((item) => item.id === event.target.value)
+              if (profile) loadProfile(draft, profile)
+            }}
+            className="simple-input"
+          >
+            {draft.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+          </select>
+        </label>
+      )}
 
-      <Field
-        label="SSH Key Path"
-        value={draft.keyPath}
-        onChange={(v) => handleChange('keyPath', v)}
-        placeholder="~/.ssh/id_ed25519"
-      />
-
-      <HostKeySection hostKeys={hostKeys} onForget={handleForgetHostKey} />
-
-      <div className="theme-divider h-px my-1" />
-
-      <h2 className="theme-section-title text-xs font-semibold uppercase tracking-[0.2em]">
-        Screenshots
-      </h2>
-
-      <Field
-        label="Screenshot Directory"
-        value={draft.screenshotDir}
-        onChange={(v) => handleChange('screenshotDir', v)}
-        placeholder="~/Desktop/screenshots"
-      />
-
-      <div className="theme-divider h-px my-1" />
-
-      <h2 className="theme-section-title text-xs font-semibold uppercase tracking-[0.2em]">
-        Clipboard
-      </h2>
-
-      <TemplateField
-        label="Output Template"
-        value={draft.clipboardTemplate}
-        onChange={(v) => handleChange('clipboardTemplate', v)}
-        preview={renderClipboardPreview(draft)}
-      />
-
-      <div className="theme-divider h-px my-1" />
-
-      <button
-        onClick={handleSave}
-        className={`
-          w-full py-2 rounded-lg text-xs font-medium tracking-wide transition-all
-          ${saved ? 'theme-secondary-button-saved' : 'theme-secondary-button'}
-        `}
-      >
-        {saved ? '✓ Saved' : 'Save Settings'}
-      </button>
-    </div>
-  )
-}
-
-function DestinationProfileEditor({
-  profiles,
-  activeProfileId,
-  onSelect,
-  onRename,
-  onCreate,
-  onDelete
-}: {
-  profiles: DestinationProfile[]
-  activeProfileId: string
-  onSelect: (profileId: string) => void
-  onRename: (name: string) => void
-  onCreate: () => void
-  onDelete: () => void
-}) {
-  const activeProfile = profiles.find((profile) => profile.id === activeProfileId) || profiles[0]
-
-  return (
-    <div className="flex flex-col gap-2">
-      <label className="flex flex-col gap-1">
-        <span className="theme-muted text-[10px] font-medium tracking-wide">Active Destination</span>
-        <select
-          value={activeProfileId}
-          onChange={(event) => onSelect(event.target.value)}
-          className="theme-input border rounded-lg px-2.5 py-1.5 text-xs font-mono transition-all focus:outline-none"
-        >
-          {profiles.map((profile) => (
-            <option key={profile.id} value={profile.id}>
-              {profile.name} → {profile.host || 'not configured'}
-            </option>
-          ))}
-        </select>
+      <label className="simple-field destination-field">
+        <span>Server</span>
+        <input
+          autoFocus={setupMode}
+          value={destination}
+          onChange={(event) => handleDestinationChange(event.target.value)}
+          placeholder="ssh me@192.168.1.20"
+          className="simple-input destination-input"
+          list="ssh-destinations"
+          spellCheck={false}
+        />
+        <datalist id="ssh-destinations">
+          {sshConfigHosts.map((host) => <option key={host.alias} value={host.alias}>{host.hostName}</option>)}
+        </datalist>
+        <small>Examples: <code>100.64.1.2</code>, <code>me@server.local</code>, or <code>my-vm.exe.xyz</code></small>
       </label>
 
-      <Field
-        label="Destination Name"
-        value={activeProfile?.name || ''}
-        onChange={onRename}
-        placeholder="Work Devbox"
-      />
+      <label className="simple-field">
+        <span>Name <em>optional</em></span>
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder={parsed?.suggestedName || 'Home server'}
+          className="simple-input"
+        />
+      </label>
 
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={onCreate}
-          className="theme-dropzone border rounded-lg py-2 text-[10px] theme-muted transition-all"
-        >
-          New Destination
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={profiles.length <= 1}
-          className={`theme-dropzone border rounded-lg py-2 text-[10px] transition-all ${profiles.length <= 1 ? 'theme-muted-soft cursor-not-allowed' : 'theme-muted'}`}
-        >
-          Delete Destination
-        </button>
-      </div>
+      {draft.host.endsWith('.exe.xyz') && <ExeDevNote host={draft.host} />}
 
-      <p className="theme-muted-soft text-[9px] leading-relaxed">
-        Saving updates the active destination with the connection and clipboard settings below.
-      </p>
-    </div>
-  )
-}
-
-function SshConfigPicker({
-  hosts,
-  selectedAlias,
-  onSelect
-}: {
-  hosts: SshConfigHost[]
-  selectedAlias: string
-  onSelect: (alias: string) => void
-}) {
-  if (hosts.length === 0) {
-    return (
-      <div className="theme-dropzone rounded-lg border px-2.5 py-2">
-        <p className="theme-muted-soft text-[10px] leading-relaxed">
-          No concrete hosts found in ~/.ssh/config. You can still enter SSH details manually.
-        </p>
-      </div>
-    )
-  }
-
-  const selectedHost = hosts.find((host) => host.alias === selectedAlias)
-
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="theme-muted text-[10px] font-medium tracking-wide">SSH Config Host</span>
-      <select
-        value={selectedAlias}
-        onChange={(event) => onSelect(event.target.value)}
-        className="theme-input border rounded-lg px-2.5 py-1.5 text-xs font-mono transition-all focus:outline-none"
-      >
-        <option value="">Manual settings</option>
-        {hosts.map((host) => (
-          <option key={host.alias} value={host.alias}>
-            {host.alias} → {host.hostName}{host.user ? ` (${host.user})` : ''}
-          </option>
-        ))}
-      </select>
-      {selectedHost && (
-        <p className="theme-muted-soft text-[9px] leading-relaxed truncate">
-          Applies HostName, User, Port, and first IdentityFile from {selectedHost.sourcePath || '~/.ssh/config'}.
-        </p>
-      )}
-    </label>
-  )
-}
-
-function formatTrustedAt(timestamp: number): string {
-  if (!timestamp) return 'legacy trust'
-  return new Date(timestamp).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function HostKeySection({
-  hostKeys,
-  onForget
-}: {
-  hostKeys: HostKeyRecord[]
-  onForget: (hostKeyId: string) => void
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <h3 className="theme-muted text-[10px] font-medium tracking-wide">Trusted Host Keys</h3>
-        <span className="theme-muted-soft text-[9px]">TOFU</span>
-      </div>
-
-      {hostKeys.length === 0 ? (
-        <div className="theme-dropzone rounded-lg border px-2.5 py-2">
-          <p className="theme-muted-soft text-[10px] leading-relaxed">
-            No FileFling-trusted host keys yet. The first successful connection will trust and store the server key.
-          </p>
+      <details className="simple-disclosure">
+        <summary>Connection details</summary>
+        <div className="details-grid">
+          <SimpleField label="Username" value={draft.username} onChange={(username) => updateDraft({ username })} />
+          <SimpleField label="Port" value={String(draft.port)} onChange={(value) => updateDraft({ port: Number(value) || 22 })} />
+          <SimpleField label="Upload folder" value={draft.remotePath} onChange={(remotePath) => updateDraft({ remotePath })} />
+          <SimpleField label="SSH key" value={draft.keyPath} onChange={(keyPath) => updateDraft({ keyPath })} />
         </div>
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {hostKeys.map((hostKey) => (
-            <div key={hostKey.id} className="theme-dropzone rounded-lg border px-2.5 py-2 flex items-start gap-2">
-              <div className="flex-1 min-w-0">
-                <p className="theme-text text-[10px] font-mono truncate">
-                  {hostKey.host}:{hostKey.port}
-                </p>
-                <p className="theme-muted text-[9px] font-mono truncate">
-                  {hostKey.algorithm} · {hostKey.fingerprintSHA256}
-                </p>
-                <p className="theme-muted-soft text-[9px]">
-                  Trusted {formatTrustedAt(hostKey.trustedAt)}{hostKey.source === 'legacy' ? ' · migrated legacy key' : ''}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onForget(hostKey.id)}
-                className="theme-link text-[9px] transition-colors flex-shrink-0"
-                title="Forget this host key. The next connection will trust the presented key again."
-              >
-                Forget
-              </button>
+      </details>
+
+      <div className="setup-actions">
+        <button type="button" onClick={handleSave} disabled={saving} className="simple-primary">
+          {saving ? 'Saving…' : saved ? 'Saved' : 'Save destination'}
+        </button>
+        <button type="button" onClick={handleTest} disabled={testing} className="simple-secondary">
+          {testing ? 'Testing…' : 'Test'}
+        </button>
+      </div>
+
+      {message && <p className={saved ? 'simple-message success' : 'simple-message'}>{message}</p>}
+      {testResult && (
+        <div className={`test-result ${testResult.ok ? 'success' : 'error'}`}>
+          <strong>{testResult.ok ? 'Connection works' : 'Could not connect'}</strong>
+          <span>{testResult.message}</span>
+        </div>
+      )}
+
+      {!setupMode && (
+        <>
+          <div className="destination-tools">
+            <button type="button" onClick={createDestination}>+ Add another</button>
+            <button type="button" onClick={deleteDestination} disabled={draft.profiles.length <= 1}>Remove this destination</button>
+          </div>
+
+          <details className="simple-disclosure preferences">
+            <summary>App preferences</summary>
+            <div className="details-stack">
+              <SimpleField label="Screenshot folder" value={draft.screenshotDir} onChange={(screenshotDir) => updateDraft({ screenshotDir })} />
+              <SimpleField label="Copied text" value={draft.clipboardTemplate} onChange={(clipboardTemplate) => updateDraft({ clipboardTemplate })} />
+              <label className="simple-field">
+                <span>Appearance</span>
+                <select value={draft.theme} onChange={(event) => updateDraft({ theme: event.target.value as AppTheme })} className="simple-input">
+                  {APP_THEMES.map((theme) => <option key={theme} value={theme}>{THEME_LABELS[theme]}</option>)}
+                </select>
+              </label>
             </div>
-          ))}
-        </div>
+          </details>
+
+          {hostKeys.length > 0 && (
+            <details className="simple-disclosure">
+              <summary>Trusted servers ({hostKeys.length})</summary>
+              <div className="trusted-list">
+                {hostKeys.map((hostKey) => (
+                  <div key={hostKey.id}>
+                    <span>{hostKey.host}:{hostKey.port}</span>
+                    <button type="button" onClick={() => forgetHostKey(hostKey.id)}>Forget</button>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </>
       )}
-
-      <p className="theme-muted-soft text-[9px] leading-relaxed">
-        If a server is rebuilt or its SSH host key changes, forget the old key here and run the connection test again.
-      </p>
     </div>
   )
 }
 
-function ThemePicker({
-  value,
-  onChange
-}: {
-  value: AppTheme
-  onChange: (theme: AppTheme) => void
-}) {
+function ExeDevNote({ host }: { host: string }) {
+  const vmName = host.split('.')[0]
   return (
-    <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Theme">
-      {APP_THEMES.map((theme) => {
-        const selected = theme === value
-        return (
-          <button
-            key={theme}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onChange(theme)}
-            className={`
-              rounded-lg border px-2 py-2 text-[10px] font-medium tracking-wide transition-all
-              ${selected ? 'theme-primary-button' : 'theme-dropzone'}
-            `}
-          >
-            {THEME_LABELS[theme]}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-function renderClipboardPreview(settings: FlingSettings): string {
-  const values: Record<string, string> = {
-    remotePath: `/home/${settings.username || 'user'}/shared/example.png`,
-    filename: 'example.png',
-    host: settings.host || 'devbox',
-    username: settings.username || 'user',
-    timestamp: '2026-06-25T14:30:15.000Z'
-  }
-
-  return settings.clipboardTemplate.replace(/{{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*}}/g, (token, key: string) => {
-    return key in values ? values[key] : token
-  })
-}
-
-function TemplateField({
-  label,
-  value,
-  onChange,
-  preview
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  preview: string
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="theme-muted text-[10px] font-medium tracking-wide">{label}</span>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        rows={3}
-        className="theme-input rounded-lg px-2.5 py-1.5 text-xs font-mono transition-all focus:outline-none resize-none"
-        placeholder="{{remotePath}}"
-      />
-      <p className="theme-muted-soft text-[9px] leading-relaxed">
-        Tokens: {'{{remotePath}}'}, {'{{filename}}'}, {'{{host}}'}, {'{{username}}'}, {'{{timestamp}}'}
-      </p>
-      <div className="theme-dropzone rounded-lg border px-2.5 py-2">
-        <p className="theme-muted-soft text-[9px] uppercase tracking-wide mb-1">Preview</p>
-        <p className="theme-text text-[10px] font-mono whitespace-pre-wrap break-words">{preview}</p>
+    <div className="exe-note">
+      <div className="exe-mark">exe</div>
+      <div>
+        <strong>exe.dev VM detected</strong>
+        <p>FileFling will connect as <code>exedev</code> over SSH. Make sure this Mac’s SSH key is registered with exe.dev.</p>
+        <p>Its HTTPS front door is <code>https://{vmName}.exe.xyz</code>. That URL serves your app, not uploaded files automatically.</p>
       </div>
-    </label>
+    </div>
   )
 }
 
-// ─── Reusable Input Field ────────────────────────────────────────────
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  placeholder?: string
-}) {
+function SimpleField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="theme-muted text-[10px] font-medium tracking-wide">{label}</span>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="theme-input rounded-lg px-2.5 py-1.5 text-xs font-mono transition-all focus:outline-none"
-      />
+    <label className="simple-field">
+      <span>{label}</span>
+      <input value={value} onChange={(event) => onChange(event.target.value)} className="simple-input" spellCheck={false} />
     </label>
   )
 }

@@ -25,6 +25,14 @@ function resolveHomePath(path: string): string {
   return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
 }
 
+function defaultPrivateKeyPath(): string {
+  for (const filename of ['id_ed25519', 'id_ecdsa', 'id_rsa']) {
+    const candidate = join(homedir(), '.ssh', filename)
+    if (isFile(candidate)) return candidate
+  }
+  return join(homedir(), '.ssh', 'id_ed25519')
+}
+
 type StoredHostKey = string | HostKeyRecord
 
 const store = new Store<{
@@ -39,14 +47,14 @@ const store = new Store<{
       port: 22,
       username: userInfo().username,
       remotePath: '~/shared',
-      keyPath: '',
+      keyPath: defaultPrivateKeyPath(),
       sshConfigHost: '',
-      screenshotDir: join(homedir(), 'Desktop', 'screenshots'),
+      screenshotDir: join(homedir(), 'Desktop'),
       clipboardTemplate: '{{remotePath}}',
       activeProfileId: 'default',
       profiles: [],
       autoCleanupDays: 7,
-      theme: 'terminal',
+      theme: 'graphite',
       onboardingComplete: false
     },
     history: [],
@@ -147,7 +155,17 @@ function migrateSettings(settings: FlingSettings): FlingSettings {
   let changed = false
 
   if (!isAppTheme(migrated.theme)) {
-    migrated = { ...migrated, theme: 'terminal' }
+    migrated = { ...migrated, theme: 'graphite' }
+    changed = true
+  }
+
+  if (typeof migrated.keyPath !== 'string' || !migrated.keyPath.trim()) {
+    migrated = { ...migrated, keyPath: defaultPrivateKeyPath() }
+    changed = true
+  }
+
+  if (typeof migrated.screenshotDir !== 'string' || !migrated.screenshotDir.trim()) {
+    migrated = { ...migrated, screenshotDir: join(homedir(), 'Desktop') }
     changed = true
   }
 
